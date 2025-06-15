@@ -1,0 +1,39 @@
+const { ChannelType, ThreadAutoArchiveDuration } = require('discord.js');
+const chat = require('../../schemas/chat');
+const chatP = require('../../schemas/chatPanel');
+
+module.exports = async (client) => {
+
+    setInterval(async () => {
+        const panelData = await chatP.find();
+
+        for (const pData of panelData) {
+            if (!pData.queue) continue;
+            if (pData.queue.length < 2) continue;
+            const guild = await client.guilds.fetch(pData.guildID);
+            const channel = await guild.channels.fetch(pData.channelID).catch(() => {});
+
+            if (!channel) {
+                await chatP.deleteOne({channelID: pData.channelID}) 
+                continue;
+            } 
+
+            const thread = await channel.threads.create({
+                name: 'Your Chat',
+                autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+                type: ChannelType.PrivateThread,
+                reason: 'Started a random chat.',
+            });
+            
+            const firstUser = pData.queue[0];   
+            const secondUser = pData.queue[1];
+            pData.queue = pData.queue.filter(p => p !== firstUser && p !== secondUser);
+            await pData.save();
+
+            await new chat({chatID: thread.id, users: [firstUser, secondUser]}).save();
+
+            await thread.send(`<@${firstUser}>, <@${secondUser}>\n\n# 👋 Say Hello!`).catch(() => {});
+        }
+
+    }, 800);
+}
